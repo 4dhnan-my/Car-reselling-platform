@@ -1,6 +1,12 @@
+import json
+import os
+import urllib.error
+import urllib.request
+
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import render
 from django.conf import settings
+from django.views.decorators.csrf import csrf_exempt
 
 
 def home(request):
@@ -40,3 +46,93 @@ def vehicle_intel(request):
             "fetched_at": "Live Django concierge estimate",
         }
     )
+
+
+@csrf_exempt
+def concierge_chat(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+
+    api_key = os.environ.get("GOOGLE_AI_API_KEY")
+    if not api_key:
+        return JsonResponse(
+            {"error": "GOOGLE_AI_API_KEY is not configured on the server."},
+            status=503,
+        )
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+
+    prompt = str(payload.get("prompt", "")).strip()
+    vehicle = payload.get("vehicle") or {}
+    intel = payload.get("intel") or {}
+    if not prompt:
+        return JsonResponse({"error": "Prompt is required."}, status=400)
+
+    vehicle_context = json.dumps(
+        {
+            "vehicle": vehicle,
+            "market_intelligence": intel,
+        },
+        ensure_ascii=True,
+    )
+    system_text = (
+        "You are Crown Vault's ultra-premium AI luxury concierge. "
+        "Help verified buyers evaluate and purchase luxury cars, supercars, yachts, and private jets. "
+        "Be concise, discreet, professional, and specific. Use INR pricing where values are available. "
+        "Discuss market value, resale value, specifications, horsepower, torque, top speed, acceleration, "
+        "service history, ownership, competitors, maintenance cost, insurance estimate, luxury features, "
+        "fuel efficiency, demand, depreciation/appreciation, upcoming launches, purchase readiness, and global delivery. "
+        "Do not claim live dealer confirmation unless the provided context says so."
+    )
+    body = {
+        "systemInstruction": {"parts": [{"text": system_text}]},
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": (
+                            f"Selected asset context: {vehicle_context}\n\n"
+                            f"Buyer question: {prompt}"
+                        )
+                    }
+                ],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.45,
+            "topP": 0.9,
+            "maxOutputTokens": 420,
+        },
+    }
+    request_data = json.dumps(body).encode("utf-8")
+    api_url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.5-flash:generateContent?key={api_key}"
+    )
+    api_request = urllib.request.Request(
+        api_url,
+        data=request_data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(api_request, timeout=18) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        return JsonResponse({"error": "Google AI request failed.", "detail": detail}, status=502)
+    except (urllib.error.URLError, TimeoutError):
+        return JsonResponse({"error": "Google AI is unreachable from this server."}, status=502)
+
+    candidates = result.get("candidates") or []
+    parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+    answer = "\n".join(part.get("text", "") for part in parts).strip()
+    if not answer:
+        return JsonResponse({"error": "Google AI returned an empty response."}, status=502)
+
+    return JsonResponse({"reply": answer, "provider": "gemini-2.5-flash"})

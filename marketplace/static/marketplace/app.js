@@ -321,6 +321,40 @@ async function fetchVehicleIntel(item) {
   }
 }
 
+async function fetchConciergeChat(prompt, item, intel) {
+  const response = await fetch("/api/concierge-chat/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify({
+      prompt,
+      vehicle: {
+        id: item.id,
+        type: item.type,
+        title: title(item),
+        brand: item.brand,
+        model: item.model,
+        year: item.year,
+        price_inr: item.price,
+        usage: usage(item),
+        body: item.body,
+        fuel: item.fuel,
+        transmission: item.transmission,
+        exterior: item.exterior,
+        interior: item.interior,
+        ownership: item.ownership,
+        service: item.service,
+        registration: item.registration,
+        insurance: item.insurance,
+        features: item.features
+      },
+      intel
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "AI concierge unavailable");
+  return data.reply;
+}
+
 function intelLine(label, value) {
   return `${label}: ${Array.isArray(value) ? value.join(", ") : value}`;
 }
@@ -1269,13 +1303,19 @@ function installVehicleChatShell() {
     typing.textContent = "Concierge is typing";
     messages.appendChild(typing);
     selectedIntel = selectedIntel || await fetchVehicleIntel(selectedVehicle);
-    setTimeout(() => {
+    try {
+      const reply = await fetchConciergeChat(prompt, selectedVehicle, selectedIntel);
       typing.remove();
-      addMessage(vehicleAiReply(prompt, selectedVehicle, selectedIntel));
-    }, 360);
+      addMessage(reply);
+    } catch {
+      setTimeout(() => {
+        typing.remove();
+        addMessage(vehicleAiReply(prompt, selectedVehicle, selectedIntel));
+      }, 260);
+    }
   };
 
-  addMessage("Good day. Select a vehicle first, then ask about value, specs, resale, competitors, facelift notes, or booking.");
+  addMessage("Good day. Select a vehicle first, then ask the live AI concierge about value, specs, resale, competitors, delivery, payment, insurance, maintenance, or upcoming launches.");
   setSuggestions(inventory.slice(0, 4));
   document.querySelector("#chatToggle").addEventListener("click", () => panel.classList.toggle("open"));
   document.querySelector("#chatClose").addEventListener("click", () => panel.classList.remove("open"));
