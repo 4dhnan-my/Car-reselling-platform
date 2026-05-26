@@ -1,16 +1,17 @@
 <!doctype html>
+{% load static %}
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Crown Vault | Pre-Owned Luxury Marketplace</title>
-    <meta name="description" content="Crown Vault is a private marketplace for pre-owned exotic cars, luxury yachts, private jets, and VIP concierge acquisitions." />
+    <title>Crown Vault | Global Luxury Vehicle Purchasing</title>
+    <meta name="description" content="Crown Vault is an ultra-premium global brokerage platform for buying luxury cars, supercars, yachts, and private jets with private concierge delivery." />
     <meta name="theme-color" content="#0b0a08" />
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="{% static 'marketplace/manifest.webmanifest' %}" />
+    <link rel="icon" href="{% static 'marketplace/icon.svg' %}" type="image/svg+xml" />
     <link rel="preconnect" href="https://tse4.mm.bing.net" />
     <link rel="preload" as="image" href="https://tse4.mm.bing.net/th?q=Rolls%20Royce%20Cullinan%20Bentley%20showroom%20luxury%20dealership%20photography&w=1800&h=1100&c=7&rs=1&p=0&o=5&pid=1.7" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="{% static 'marketplace/styles.css' %}" />
   </head>
   <body>
     <div class="loader" id="loader">
@@ -29,7 +30,8 @@
         <a href="#/cars">Luxury Cars</a>
         <a href="#/yachts">Yachts</a>
         <a href="#/jets">Private Jets</a>
-        <a href="#/concierge">Concierge</a>
+        <a href="#/concierge">AI Concierge</a>
+        <a href="#/tracking">Delivery</a>
         <a href="#/about">About</a>
         <a href="#/compare">Compare</a>
         <a href="#/login">Login</a>
@@ -74,7 +76,7 @@
     <footer class="footer">
       <div>
         <a class="logo footer-logo" href="#/home"><span>CV</span><strong>Crown Vault</strong></a>
-        <p>Private brokerage for distinguished buyers seeking authenticated pre-owned cars, yachts, jets, and acquisition advisory.</p>
+        <p>Private global brokerage for authenticated luxury cars, supercars, yachts, jets, secure payment, and white-glove worldwide delivery.</p>
       </div>
       <div>
         <h3>Concierge</h3>
@@ -96,6 +98,6 @@
       <div class="copyright">© 2026 Crown Vault. Discreet luxury marketplace experience.</div>
     </footer>
 
-    <script src="app.js"></script>
+    <script src="{% static 'marketplace/app.js' %}"></script>
   </body>
 </html>

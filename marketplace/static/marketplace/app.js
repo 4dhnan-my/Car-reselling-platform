@@ -167,6 +167,7 @@ const state = {
   wishlist: storage.get("cvWishlist", []),
   compare: storage.get("cvCompare", []),
   recent: storage.get("cvRecent", []),
+  purchases: storage.get("cvPurchases", []),
   preferences: storage.get("cvPreferences", { theme: "light", budget: "", interest: "Luxury cars" })
 };
 
@@ -174,6 +175,7 @@ function persistState() {
   storage.set("cvWishlist", state.wishlist);
   storage.set("cvCompare", state.compare);
   storage.set("cvRecent", state.recent);
+  storage.set("cvPurchases", state.purchases);
   storage.set("cvPreferences", state.preferences);
 }
 
@@ -249,6 +251,17 @@ function usage(item) { return typeof item.mileage === "number" ? `${item.mileage
 function byIds(ids) { return ids.map((id) => inventory.find((item) => item.id === id)).filter(Boolean); }
 function isSaved(id) { return state.wishlist.includes(id); }
 function isCompared(id) { return state.compare.includes(id); }
+function assetName(type) { return type === "car" ? "vehicle" : type === "yacht" ? "yacht" : "aircraft"; }
+function deliveryMode(item) { return item.type === "car" ? "enclosed transport" : item.type === "yacht" ? "ocean delivery" : "aviation handover"; }
+function deliveryEta(item) { return item.type === "car" ? "14-28 days worldwide" : item.type === "yacht" ? "21-45 days by route and port" : "10-21 days after aviation clearance"; }
+function invoiceNumber() { return `CV-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`; }
+function taxEstimate(item) {
+  const duty = item.type === "car" ? 0.42 : item.type === "yacht" ? 0.18 : 0.11;
+  return Math.round(item.price * duty);
+}
+function warrantyLabel(item) {
+  return item.type === "car" ? "24-month Crown Vault luxury warranty available" : item.type === "yacht" ? "12-month systems and survey warranty available" : "Airframe, engine program, and avionics support available";
+}
 function availability(item) {
   const hot = item.price > 40000000 || item.year >= 2023;
   return hot ? "Private allocation" : item.type === "car" ? "Available now" : "Viewing by appointment";
@@ -280,6 +293,11 @@ function localVehicleIntel(item) {
     top_speed_kmph: topSpeed,
     mileage: electric ? "Range depends on battery condition and charging profile" : item.type === "car" ? "4-8 km/l in mixed luxury use" : item.mileage,
     competitors: item.type === "car" ? ["Porsche", "Bentley", "Mercedes-Maybach"] : item.type === "yacht" ? ["Azimut", "Riva", "Princess"] : ["Gulfstream", "Bombardier", "Dassault"],
+    acceleration: item.type === "car" ? (premium || coupe ? "0-100 km/h in 2.9-4.4 sec" : "0-100 km/h in 4.5-5.8 sec") : item.type === "yacht" ? "Cruising profile optimized for 22-32 knots" : "Long-range cruise profile near Mach 0.85-0.90",
+    maintenance_cost: item.type === "car" ? "INR 18-75 Lakh/year depending on mileage and warranty" : item.type === "yacht" ? "INR 2.5-8 Cr/year including crew, berth and scheduled maintenance" : "INR 12-45 Cr/year depending on hours, programs and crew",
+    insurance_estimate: item.type === "car" ? "INR 18-90 Lakh/year" : item.type === "yacht" ? "INR 1.2-5 Cr/year hull and liability" : "INR 4-18 Cr/year hull and liability",
+    demand: premium || item.year >= 2022 ? "High demand among private collectors" : "Stable demand with price sensitivity",
+    trend: age < 2 ? "Limited depreciation risk over the next 12 months" : "Expect softer depreciation if mileage and service records remain clean",
     facelift: "Monitor current dealer allocation for MY2026 cabin tech, ADAS, and limited-edition trim updates.",
     fetched_at: "Local concierge fallback"
   };
@@ -313,9 +331,14 @@ function vehicleSummary(item, intel) {
     intelLine("Engine", intel.engine),
     intelLine("Power", `${intel.horsepower} hp / ${intel.torque_nm} Nm`),
     intelLine("Top speed", `${intel.top_speed_kmph} km/h`),
+    intelLine("Acceleration", intel.acceleration || "Performance verified during inspection"),
     intelLine("Mileage", intel.mileage),
     intelLine("Ownership", item.ownership),
     intelLine("Service history", item.service),
+    intelLine("Maintenance cost", intel.maintenance_cost || "Available from concierge"),
+    intelLine("Insurance estimate", intel.insurance_estimate || "Available from concierge"),
+    intelLine("Market demand", intel.demand || "Collector demand reviewed by concierge"),
+    intelLine("Resale trend", intel.trend || "Resale trend depends on condition and allocation"),
     intelLine("Fuel", item.fuel),
     intelLine("Luxury features", item.features.slice(0, 4).join(", ")),
     intelLine("Resale value", price(intel.resale_value_inr || item.price * 0.72)),
@@ -387,10 +410,13 @@ function card(item) {
         <p>${item.exterior} over ${item.interior}. ${item.service}.</p>
         <div class="card-actions">
           <a class="button primary" href="#/detail/${item.id}">View details</a>
+          <a class="button primary buy" href="#/checkout/${item.id}">Buy now</a>
+          <button class="button ghost" data-reserve="${item.id}">Reserve vehicle</button>
+          <button class="button ghost" data-inquire="${item.id}">Speak to concierge</button>
+          <button class="button ghost" data-inspection="${item.id}">Request live inspection</button>
           <button class="icon-action ${isSaved(item.id) ? "active" : ""}" data-wishlist="${item.id}" aria-label="${isSaved(item.id) ? "Remove from" : "Add to"} wishlist">${isSaved(item.id) ? "Saved" : "Save"}</button>
           <button class="icon-action ${isCompared(item.id) ? "active" : ""}" data-compare="${item.id}" aria-label="${isCompared(item.id) ? "Remove from" : "Add to"} compare">${isCompared(item.id) ? "Comparing" : "Compare"}</button>
           <button class="icon-action ai" data-chat-vehicle="${item.id}">Ask AI</button>
-          <button class="button ghost" data-inquire="${item.id}">Contact concierge</button>
         </div>
       </div>
     </article>
@@ -410,12 +436,14 @@ function homePage() {
         ${luxImg(heroImage, "Private luxury vehicle showroom", "hero", "eager")}
       </div>
       <div class="hero-content fade-in">
-        <p class="eyebrow">Private pre-owned marketplace</p>
-        <h1>PRE-OWNED. PERFECTED.</h1>
-        <p>The world’s most exclusive luxury vehicles, curated for distinguished buyers.</p>
+        <p class="eyebrow">Ultra-premium global brokerage</p>
+        <h1>CROWN VAULT</h1>
+        <p>Buy authenticated luxury cars, supercars, yachts, and private jets with secure INR payment, private invoice, and white-glove worldwide delivery.</p>
         <div class="hero-actions">
-          <a class="button primary" href="#/cars">Enter the car vault</a>
-          <a class="button ghost" href="#/concierge">Speak to concierge</a>
+          <a class="button primary" href="#/cars">Buy luxury cars</a>
+          <a class="button ghost" href="#/yachts">Acquire yachts</a>
+          <a class="button ghost" href="#/jets">Acquire jets</a>
+          <a class="button ghost" href="#/concierge">AI concierge</a>
         </div>
       </div>
     </section>
@@ -423,19 +451,19 @@ function homePage() {
       <div class="stat"><strong>${cars.length}</strong><span class="stat-label">Luxury cars</span></div>
       <div class="stat"><strong>${yachts.length}</strong><span class="stat-label">Yachts</span></div>
       <div class="stat"><strong>${jets.length}</strong><span class="stat-label">Private jets</span></div>
-      <div class="stat"><strong>24h</strong><span class="stat-label">Concierge response</span></div>
+      <div class="stat"><strong>Global</strong><span class="stat-label">Delivery network</span></div>
     </section>
     <section class="section">
       <div class="section-heading">
-        <div><p class="eyebrow">Featured acquisitions</p><h2>Quietly exceptional inventory.</h2></div>
-        <p>Every listing is positioned like a private dossier: ownership, service history, gallery, inspection access, financing estimate, and concierge contact.</p>
+        <div><p class="eyebrow">Featured acquisitions</p><h2>Purchase-ready private inventory.</h2></div>
+        <p>Every dossier supports full payment, reservation, live inspection, secure invoice, import estimate, and delivery coordination for villas, marinas, hangars, and island destinations.</p>
       </div>
       <div class="listing-grid">${featured.map(card).join("")}</div>
     </section>
     <section class="section premium-band">
       <div class="section-heading">
         <div><p class="eyebrow">AI recommended</p><h2>Matched to your taste.</h2></div>
-        <p>Local preference intelligence uses saved listings, recent views, budget signals, and category interest to surface quieter, better fits.</p>
+        <p>Concierge intelligence uses saved listings, recent views, budget signals, market trend, demand, and projected resale value to surface stronger alternatives.</p>
       </div>
       <div class="listing-grid">${recommended.map(card).join("")}</div>
     </section>
@@ -461,7 +489,7 @@ function listingPage(type) {
     <section class="page-hero fade-in">
       <p class="eyebrow">${label}</p>
       <h1>${label}</h1>
-      <p>Discreet, verified second-hand listings presented with the restraint of a private brokerage office.</p>
+      <p>Verified global listings ready for full purchase, reservation, live inspection, secure payment, and private delivery coordination.</p>
     </section>
     <section class="section">
       <form class="filters" id="filters" data-type="${type}">
@@ -506,6 +534,13 @@ function detailPage(id) {
           <div class="viewer360-stage">${luxImg(item.gallery[1] || item.image, `${title(item)} interior viewer`, item.type)}</div>
           <label>360 interior angle<input type="range" min="0" max="100" value="45" data-viewer360></label>
         </div>
+        <div class="sound-preview">
+          <div>
+            <p class="eyebrow">Engine sound preview</p>
+            <h3>${item.type === "car" ? "Start-up and cabin note" : item.type === "yacht" ? "Twin engine dock departure" : "Turbofan cabin ambience"}</h3>
+          </div>
+          <button class="button ghost" data-sound-preview="${item.id}">Play preview</button>
+        </div>
         <div class="spec-list">
           <div><span>Year</span><strong>${item.year}</strong></div>
           <div><span>${item.type === "car" ? "Mileage" : "Hours"}</span><strong>${usage(item)}</strong></div>
@@ -517,6 +552,35 @@ function detailPage(id) {
           <div><span>Service records</span><strong>${item.service}</strong></div>
           <div><span>Registration</span><strong>${item.registration}</strong></div>
           <div><span>Insurance</span><strong>${item.insurance}</strong></div>
+          <div><span>Acceleration</span><strong>${localVehicleIntel(item).acceleration}</strong></div>
+          <div><span>Top speed</span><strong>${localVehicleIntel(item).top_speed_kmph} km/h</strong></div>
+          <div><span>Warranty</span><strong>${warrantyLabel(item)}</strong></div>
+          <div><span>Delivery timeline</span><strong>${deliveryEta(item)}</strong></div>
+        </div>
+        <div class="dossier-grid">
+          <section class="about-card">
+            <p class="eyebrow">Inspection report</p>
+            <h3>Verified condition file</h3>
+            <p>Paint meter readings, cabin wear, systems review, service audit, tire/brake status, and final concierge video inspection before payment release.</p>
+          </section>
+          <section class="about-card">
+            <p class="eyebrow">${item.type === "car" ? "VIN verification" : item.type === "yacht" ? "Hull verification" : "Serial verification"}</p>
+            <h3>${item.type === "car" ? `VIN ${item.id.toUpperCase()}-CV-2026` : item.type === "yacht" ? `HIN ${item.id.toUpperCase()}-MONACO` : `MSN ${item.id.toUpperCase()}-AIR`}</h3>
+            <p>Identity, registration, lien status, insurance validity, ownership authority, and export readiness are checked through the private office.</p>
+          </section>
+          <section class="about-card ownership-timeline">
+            <p class="eyebrow">Ownership timeline</p>
+            <h3>Clean provenance</h3>
+            <span>${item.year} factory delivery</span>
+            <span>${item.ownership}</span>
+            <span>${item.service}</span>
+            <span>2026 Crown Vault verification</span>
+          </section>
+          <section class="about-card">
+            <p class="eyebrow">Global delivery</p>
+            <h3>${deliveryMode(item)}</h3>
+            <p>Route planning, customs documentation, import duty estimate, shipment tracking, and dedicated concierge contact through final handover.</p>
+          </section>
         </div>
         <h2>Luxury features</h2>
         <ul class="feature-list">${item.features.map((f) => `<li>${f}</li>`).join("")}</ul>
@@ -538,18 +602,162 @@ function detailPage(id) {
             <button class="button ghost ${isSaved(item.id) ? "active" : ""}" data-wishlist="${item.id}">${isSaved(item.id) ? "Saved to wishlist" : "Save to wishlist"}</button>
             <button class="button ghost ${isCompared(item.id) ? "active" : ""}" data-compare="${item.id}">${isCompared(item.id) ? "In compare" : "Add to compare"}</button>
             <button class="button ghost" data-chat-vehicle="${item.id}">Ask about this vehicle</button>
-            <button class="button primary" data-inquire="${item.id}">Contact concierge</button>
-            <button class="button ghost" data-booking="${item.id}">Book test drive</button>
-            <button class="button ghost" data-inquire="${item.id}">Request inspection report</button>
+            <a class="button primary buy" href="#/checkout/${item.id}">Buy now</a>
+            <button class="button ghost" data-reserve="${item.id}">Reserve vehicle</button>
+            <button class="button ghost" data-inquire="${item.id}">Speak to concierge</button>
+            <button class="button ghost" data-inspection="${item.id}">Request live inspection</button>
             <a class="button ghost" target="_blank" rel="noreferrer" href="https://wa.me/971555010099?text=I%20am%20interested%20in%20${encodeURIComponent(title(item))}">WhatsApp inquiry</a>
           </div>
         </div>
         <div class="dealer-card">
-          <p class="eyebrow">Dealer information</p>
+          <p class="eyebrow">Global private office</p>
           <h3>Crown Vault Private Office</h3>
           <p>Mayfair • Dubai • Monaco. Inspection, escrow, transport, finance, export documentation, and handover available by appointment.</p>
         </div>
       </aside>
+    </section>
+  `;
+}
+
+function checkoutFields(item) {
+  if (item.type === "car") {
+    return `
+      <label>Delivery country<input name="deliveryCountry" required placeholder="United Arab Emirates"></label>
+      <label>City<input name="city" required placeholder="Dubai"></label>
+      <label>Exact delivery location<input name="deliveryLocation" required placeholder="Villa district, tower, estate, or private office"></label>
+      <label>Villa/apartment delivery<select name="residenceType"><option>Villa delivery</option><option>Apartment tower delivery</option><option>Private office handover</option><option>Collector garage handover</option></select></label>
+      <label>Garage access details<textarea name="garageAccess" placeholder="Ramp clearance, security gate, basement height, delivery window"></textarea></label>
+      <label>Transport option<select name="supportOption"><option>Luxury enclosed transport</option><option>Climate-controlled collector trailer</option><option>Air freight delivery</option><option>Discreet covered flatbed</option></select></label>
+    `;
+  }
+  if (item.type === "yacht") {
+    return `
+      <label>Port location<input name="deliveryCountry" required placeholder="Monaco / Dubai / Maldives"></label>
+      <label>Marina name<input name="city" required placeholder="Port Hercule"></label>
+      <label>Island destination<input name="deliveryLocation" placeholder="St Barths, Sardinia, Maldives private island"></label>
+      <label>Docking assistance<select name="residenceType"><option>Full docking assistance</option><option>Marina berth coordination</option><option>Owner captain handover</option><option>Remote island tender support</option></select></label>
+      <label>Ocean delivery route<textarea name="garageAccess" placeholder="Origin port, preferred route, customs stops, final marina"></textarea></label>
+      <label>Captain/crew support<select name="supportOption"><option>Captain and crew for delivery</option><option>Permanent crew sourcing</option><option>Temporary passage crew</option><option>Owner-managed voyage</option></select></label>
+    `;
+  }
+  return `
+    <label>Airport delivery location<input name="deliveryCountry" required placeholder="London Luton / Dubai DWC / Nice"></label>
+    <label>Private hangar<input name="city" required placeholder="ExecuJet private hangar"></label>
+    <label>Island airstrip<input name="deliveryLocation" placeholder="Optional private island or secondary airstrip"></label>
+    <label>Aviation registration details<textarea name="residenceType" placeholder="Preferred jurisdiction, tail number reservation, operator details"></textarea></label>
+    <label>Charter management<select name="supportOption"><option>Charter management onboarding</option><option>Private-only operation</option><option>Aircraft management proposal</option><option>Crew and maintenance program</option></select></label>
+    <label>Hangar access and security<textarea name="garageAccess" placeholder="FBO, security protocol, customs handling, arrival window"></textarea></label>
+  `;
+}
+
+function checkoutPage(id) {
+  const item = inventory.find((asset) => asset.id === id);
+  if (!item) return notFound();
+  const duty = taxEstimate(item);
+  return `
+    <section class="page-hero fade-in">
+      <p class="eyebrow">Secure acquisition</p>
+      <h1>Buy ${title(item)}.</h1>
+      <p>Full INR payment, luxury invoice generation, secure gateway UI, wire transfer, crypto settlement, and concierge-led ${deliveryMode(item)}.</p>
+    </section>
+    <section class="checkout-layout section">
+      <form class="checkout-form" id="checkoutForm" data-checkout-id="${item.id}">
+        <div class="checkout-block">
+          <p class="eyebrow">Buyer identity</p>
+          <label>Full legal name<input name="buyerName" required placeholder="Buyer or entity name"></label>
+          <label>Email<input type="email" name="email" required placeholder="private@example.com"></label>
+          <label>Phone / WhatsApp<input name="phone" required placeholder="+971 55 000 0000"></label>
+          <label>VIP membership<select name="membership"><option>Crown Black member</option><option>Private family office</option><option>New verified buyer</option><option>Representative / assistant</option></select></label>
+        </div>
+        <div class="checkout-block">
+          <p class="eyebrow">${assetName(item.type)} delivery</p>
+          ${checkoutFields(item)}
+          <div class="delivery-estimate">
+            <strong>${deliveryEta(item)}</strong>
+            <span>Estimated timeline after cleared payment, inspection release, and export documentation.</span>
+          </div>
+        </div>
+        <div class="checkout-block">
+          <p class="eyebrow">Payment</p>
+          <label>Payment method<select name="paymentMethod"><option>Secure payment gateway</option><option>Wire transfer</option><option>Crypto payment</option></select></label>
+          <label>Invoice name<input name="invoiceName" required placeholder="Personal name or company"></label>
+          <label>Billing address<textarea name="billingAddress" required placeholder="Registered billing address"></textarea></label>
+          <label>Transaction note<textarea name="transactionNote" placeholder="Escrow preference, special handover requests, bank reference"></textarea></label>
+          <div class="payment-panel">
+            <span>Razor-secure gateway simulation</span>
+            <strong>${price(item.price)}</strong>
+            <small>Alternative settlement: private bank wire or BTC/ETH/USDT desk.</small>
+          </div>
+          <button class="button primary" type="submit">Complete full payment</button>
+        </div>
+      </form>
+      <aside class="checkout-summary">
+        ${luxImg(item.image, title(item), item.type)}
+        <h2>${title(item)}</h2>
+        <strong class="price">${price(item.price)}</strong>
+        <div class="invoice-lines">
+          <span>Asset price <strong>${price(item.price)}</strong></span>
+          <span>Estimated import duty <strong>${price(duty)}</strong></span>
+          <span>Warranty <strong>${warrantyLabel(item)}</strong></span>
+          <span>Delivery <strong>${deliveryMode(item)}</strong></span>
+          <span>Total estimate <strong>${price(item.price + duty)}</strong></span>
+        </div>
+      </aside>
+    </section>
+  `;
+}
+
+function successPage(id) {
+  const purchase = state.purchases.find((item) => item.invoice === id) || state.purchases[0];
+  if (!purchase) return `<section class="page-hero"><p class="eyebrow">No invoice</p><h1>No completed purchase found.</h1><a class="button primary" href="#/cars">Browse inventory</a></section>`;
+  const item = inventory.find((asset) => asset.id === purchase.assetId);
+  return `
+    <section class="success-screen fade-in">
+      <div class="success-mark">CV</div>
+      <p class="eyebrow">Transaction secured</p>
+      <h1>${title(item)} purchased.</h1>
+      <p>Invoice ${purchase.invoice} has been generated for ${purchase.buyerName}. Your concierge desk is coordinating ${deliveryMode(item)} to ${purchase.deliveryLocation || purchase.city}.</p>
+      <div class="invoice-card">
+        <span>Paid amount <strong>${price(item.price)}</strong></span>
+        <span>Payment method <strong>${purchase.paymentMethod}</strong></span>
+        <span>Delivery timeline <strong>${deliveryEta(item)}</strong></span>
+        <span>Concierge <strong>+971 55 501 0099</strong></span>
+      </div>
+      <div class="hero-actions">
+        <a class="button primary" href="#/tracking/${purchase.invoice}">Track delivery</a>
+        <a class="button ghost" href="#/dashboard">Private office</a>
+      </div>
+    </section>
+  `;
+}
+
+function trackingPage(invoice = "") {
+  const purchases = invoice ? state.purchases.filter((item) => item.invoice === invoice) : state.purchases;
+  return `
+    <section class="page-hero fade-in">
+      <p class="eyebrow">Live delivery tracking</p>
+      <h1>Shipment progress.</h1>
+      <p>Track port, airport, enclosed transporter, customs, and concierge handover milestones after purchase.</p>
+    </section>
+    <section class="section">
+      ${purchases.length ? purchases.map((purchase) => {
+        const item = inventory.find((asset) => asset.id === purchase.assetId);
+        return `<article class="tracking-card">
+          ${luxImg(item.image, title(item), item.type)}
+          <div>
+            <p class="eyebrow">${purchase.invoice}</p>
+            <h2>${title(item)}</h2>
+            <p>${deliveryMode(item)} to ${purchase.deliveryLocation || purchase.city}. Concierge contact: +971 55 501 0099.</p>
+            <div class="progress-rail">
+              <span class="done">Payment secured</span>
+              <span class="done">Invoice generated</span>
+              <span class="active">Export clearance</span>
+              <span>Port / airport dispatch</span>
+              <span>Final handover</span>
+            </div>
+          </div>
+        </article>`;
+      }).join("") : `<p>No deliveries yet. Complete a purchase to activate shipment progress, port/airport tracking, and concierge handover updates.</p>`}
     </section>
   `;
 }
@@ -588,6 +796,7 @@ function authPage(mode) {
 function dashboardPage() {
   const saved = byIds(state.wishlist);
   const recent = byIds(state.recent);
+  const purchased = state.purchases.map((purchase) => ({ purchase, item: inventory.find((asset) => asset.id === purchase.assetId) })).filter((entry) => entry.item);
   return `
     <section class="dashboard fade-in">
       <aside class="dashboard-sidebar">
@@ -601,6 +810,17 @@ function dashboardPage() {
           <div class="dash-card"><span class="stat-label">Saved listings</span><strong>${saved.length}</strong></div>
           <div class="dash-card"><span class="stat-label">Compare queue</span><strong>${state.compare.length}</strong></div>
           <div class="dash-card"><span class="stat-label">Recently viewed</span><strong>${recent.length}</strong></div>
+          <div class="dash-card"><span class="stat-label">Purchased assets</span><strong>${purchased.length}</strong></div>
+          <div class="dash-card"><span class="stat-label">VIP tier</span><strong>Black</strong></div>
+          <div class="dash-card"><span class="stat-label">Saved locations</span><strong>3</strong></div>
+        </div>
+        <h2>Active deliveries</h2>
+        <div class="compare-grid">${purchased.length ? purchased.map(({ purchase, item }) => `<article class="compare-card">${luxImg(item.image, title(item), item.type)}<h3>${title(item)}</h3><span>${purchase.invoice}</span><span>${deliveryEta(item)}</span><a class="button primary" href="#/tracking/${purchase.invoice}">Track delivery</a></article>`).join("") : `<p>No purchased assets yet. Use Buy Now to activate delivery tracking.</p>`}</div>
+        <h2>Saved delivery profiles</h2>
+        <div class="dashboard-grid">
+          <div class="dash-card"><span class="stat-label">Saved garage</span><strong>Dubai villa garage</strong><p>Enclosed transport access and security gate notes saved.</p></div>
+          <div class="dash-card"><span class="stat-label">Saved dock</span><strong>Port Hercule</strong><p>Preferred marina, berth coordination, and captain handover notes saved.</p></div>
+          <div class="dash-card"><span class="stat-label">Saved hangar</span><strong>London Luton FBO</strong><p>Private hangar, operator contact, and customs details saved.</p></div>
         </div>
         <h2>Saved assets</h2>
         <div class="listing-grid">${saved.length ? saved.map(card).join("") : `<p>No saved assets yet. Use Save on any listing to build a private shortlist.</p>`}</div>
@@ -642,7 +862,7 @@ function conciergePage() {
     <section class="page-hero fade-in">
       <p class="eyebrow">VIP automotive concierge</p>
       <h1>Acquisition without noise.</h1>
-      <p>Source, inspect, finance, register, transport, export, and deliver the world’s finest pre-owned vehicles with discreet advisory.</p>
+      <p>Source, inspect, purchase, register, transport, export, and deliver the world's finest luxury cars, yachts, and private jets with AI-guided discreet advisory.</p>
     </section>
     <section class="section concierge-panel">
       <div class="concierge-copy">
@@ -694,6 +914,9 @@ const routes = {
   cars: () => listingPage("car"),
   yachts: () => listingPage("yacht"),
   jets: () => listingPage("jet"),
+  checkout: (_, id) => checkoutPage(id),
+  success: (_, id) => successPage(id),
+  tracking: (_, id) => trackingPage(id),
   concierge: conciergePage,
   about: aboutPage,
   compare: comparePage,
@@ -710,7 +933,7 @@ function render(forceTop = true) {
   const [route = "home", detailId] = location.hash.replace("#/", "").split("/");
   app.classList.remove("page-ready");
   app.classList.add("page-transitioning");
-  app.innerHTML = route === "detail" ? detailPage(detailId) : (routes[route] || routes.home)();
+  app.innerHTML = route === "detail" ? detailPage(detailId) : (routes[route] || routes.home)(route, detailId);
   nav.classList.remove("open");
   setActive(route);
   bindDynamicForms();
@@ -737,6 +960,30 @@ function setActive(route) {
 function bindDynamicForms() {
   const filters = document.querySelector("#filters");
   if (filters) filters.addEventListener("input", applyFilters);
+  const checkout = document.querySelector("#checkoutForm");
+  if (checkout) checkout.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const item = inventory.find((asset) => asset.id === checkout.dataset.checkoutId);
+    if (!item) return;
+    const data = Object.fromEntries(new FormData(checkout));
+    const invoice = invoiceNumber();
+    state.purchases = [{
+      invoice,
+      assetId: item.id,
+      createdAt: new Date().toISOString(),
+      buyerName: data.buyerName,
+      email: data.email,
+      phone: data.phone,
+      paymentMethod: data.paymentMethod,
+      city: data.city,
+      deliveryLocation: data.deliveryLocation,
+      supportOption: data.supportOption,
+      deliveryCountry: data.deliveryCountry
+    }, ...state.purchases].slice(0, 12);
+    persistState();
+    notify("Full payment secured and invoice generated");
+    location.hash = `#/success/${invoice}`;
+  });
   ["loginForm", "signupForm", "conciergeForm"].forEach((id) => {
     const form = document.querySelector(`#${id}`);
     if (form) form.addEventListener("submit", (e) => {
@@ -964,7 +1211,7 @@ function installVehicleChatShell() {
           <button data-chat-prompt="Market value">Value</button>
           <button data-chat-prompt="Engine specs">Specs</button>
           <button data-chat-prompt="Competitor comparison">Compare</button>
-          <button data-chat-prompt="Booking help">Book</button>
+          <button data-chat-prompt="Resale trend">Resale</button>
         </div>
         <form class="chat-input" id="chatForm">
           <button type="button" id="voiceButton" aria-label="Voice input">Voice</button>
@@ -1069,6 +1316,12 @@ function vehicleAiReply(prompt, item, intel) {
   const text = prompt.toLowerCase();
   if (text.includes("book") || text.includes("test") || text.includes("viewing")) return `I can arrange a private viewing for ${title(item)}. Use Book test drive on the dossier or WhatsApp concierge for fastest confirmation.`;
   if (text.includes("competitor") || text.includes("compare")) return `${title(item)} compares most directly with ${intel.competitors.join(", ")}. Its strongest points are provenance, condition, service history, and specification.`;
+  if (text.includes("alternative") || text.includes("recommend") || text.includes("budget")) {
+    const picks = recommendationList().filter((asset) => asset.type === item.type && asset.id !== item.id).slice(0, 3).map((asset) => `${title(asset)} (${price(asset.price)})`).join(", ");
+    return `Better alternatives to consider: ${picks}. I would compare provenance, delivery timing, warranty coverage, and resale demand before payment.`;
+  }
+  if (text.includes("trend") || text.includes("demand") || text.includes("depreciation") || text.includes("appreciation")) return `Market demand: ${intel.demand}. Resale outlook: ${intel.trend}. Estimated resale value is ${price(intel.resale_value_inr)} against current market value near ${price(intel.market_value_inr)}.`;
+  if (text.includes("maintenance") || text.includes("insurance")) return `Maintenance estimate: ${intel.maintenance_cost}. Insurance estimate: ${intel.insurance_estimate}. Concierge can refine this by country, usage, crew, storage, and warranty plan.`;
   if (text.includes("facelift") || text.includes("new model") || text.includes("upcoming")) return intel.facelift;
   if (text.includes("resale")) return `Estimated resale value: ${price(intel.resale_value_inr)}. Stronger resale depends on authorised service records, low usage, rare color, and clean ownership.`;
   if (text.includes("engine") || text.includes("spec") || text.includes("horse") || text.includes("torque") || text.includes("speed")) return `${intel.engine}. Output is around ${intel.horsepower} hp and ${intel.torque_nm} Nm, with top speed near ${intel.top_speed_kmph} km/h.`;
@@ -1120,6 +1373,38 @@ document.addEventListener("click", (event) => {
       document.querySelector("#inquiryNote").textContent = "Choose WhatsApp or phone for the fastest appointment confirmation.";
       document.querySelector("#inquiryDialog").showModal();
     }
+    return;
+  }
+
+  const reserve = event.target.closest("[data-reserve]");
+  if (reserve) {
+    event.preventDefault();
+    const item = inventory.find((asset) => asset.id === reserve.dataset.reserve);
+    if (item) {
+      document.querySelector("#inquiryAsset").value = `Reservation request: ${title(item)}`;
+      document.querySelector("#inquiryNote").textContent = "A refundable reservation hold and payment instructions will be prepared by the private office.";
+      document.querySelector("#inquiryDialog").showModal();
+    }
+    return;
+  }
+
+  const inspection = event.target.closest("[data-inspection]");
+  if (inspection) {
+    event.preventDefault();
+    const item = inventory.find((asset) => asset.id === inspection.dataset.inspection);
+    if (item) {
+      document.querySelector("#inquiryAsset").value = `Live inspection request: ${title(item)}`;
+      document.querySelector("#inquiryNote").textContent = "Concierge will arrange a live video inspection with condition report, identity verification, and delivery readiness.";
+      document.querySelector("#inquiryDialog").showModal();
+    }
+    return;
+  }
+
+  const sound = event.target.closest("[data-sound-preview]");
+  if (sound) {
+    event.preventDefault();
+    const item = inventory.find((asset) => asset.id === sound.dataset.soundPreview);
+    notify(`${title(item)} sound preview queued for concierge playback`);
     return;
   }
 

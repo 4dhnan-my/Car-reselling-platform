@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#0b0a08"/>
+  <rect x="56" y="56" width="400" height="400" fill="none" stroke="#b89455" stroke-width="10"/>
+  <text x="256" y="292" text-anchor="middle" fill="#b89455" font-family="Georgia,serif" font-size="132">CV</text>
+  <path d="M128 350h256" stroke="#f7f2e9" stroke-width="6" stroke-linecap="round" opacity=".62"/>
+</svg>
